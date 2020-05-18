@@ -1,0 +1,743 @@
+---
+title: "Projet S3 :  STATISTIQUES MULTIVARIÉES"
+output:
+  word_document: default
+  pdf_document: default
+editor_options:
+  chunk_output_type: console
+---
+
+#---------------------------------------------------------------------------------
+#     CONFIGURATION DE MARKDONW PAR LE PACKAGE KNITR
+#---------------------------------------------------------------------------------
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(echo = TRUE)
+#install.packages("C:/coursR/ggplot2_2.1.0.zip", repos = NULL)
+```
+#--------------------------------------------------------------------------------
+#    DECLARATION DU REPERTOIRE DE TRVAIL
+#----------------------------------------------------------------------------------
+```{r echo}
+setwd("F:/PROJET-S3/Dossier de traitement/traitement Meteo") 
+getwd()
+```
+#----------------------------------------------------------------------------------------
+#    CALL & INSTALLATION DES PACKAGES DE TRAVAIL
+#----------------------------------------------------------------------------------------
+```{r warning=TRUE, echo=FALSE}
+#manipulation facile des données
+if(!require("pacman")){
+	suppressMessages(install.packages("pacman"))
+	suppressMessages(library("pacman"))
+} 
+ suppressMessages(p_load("tidyverse","gganimate","ggplot2","ggthemes","ggThemeAssist","esquisse","rms.gof","Metrics","lubridate","magrittr","dygraphs","zoo","xts","nortest","trend","SPEI","gifski"))
+ 
+```
+#----------------------------------------------------------------------------------------
+#         IMPORTATION DES DONNEES DE SAFRAN 1959-2018
+#----------------------------------------------------------------------------------------
+```{r echo=FALSE}
+setClass('myDate')
+setAs("character","myDate", function(from) as.POSIXct(strptime(from, "%d/%m/%Y")))
+dataMeteo<-read.csv("meteo.csv",dec = ",",sep = ";",header = F,skip=1, colClasses = c("myDate","numeric","numeric","numeric"), col.names = c("DATE", "Temperature","Precipitation", "ETP"))
+
+str(dataMeteo)
+```
+#----------------------------------------------------------------------------------------
+#    VERIFICATION DE LA COHERENCE DES DATAS IMPORTEES
+#----------------------------------------------------------------------------------------
+```{r echo=FALSE}
+head(dataMeteo)
+tail(dataMeteo)
+summary(dataMeteo)
+```
+#--------------------------------------------------------------------------------
+#     EXTRATION DES DONNEES(Temperature, Precipitation, ETP) PAR MOIS
+#----------------------------------------------------------------------------------
+```{r echo=FALSE}
+#méthodes d'extration : les mois par an
+format(dataMeteo$DATE,"%Y-%m")#pour lire a la fois les mois et les années
+td<-data.frame(format(dataMeteo$DATE,"%Y-%m"),substr(dataMeteo$DATE,1,7))# pour verifier si les resultats sont les mêmes
+
+#Calcul des moyennes mensuelles par Annee
+tempMois<-tapply(dataMeteo$Temperature,format(dataMeteo$DATE,"%Y-%m"), mean)
+tempMoisE<-tapply(dataMeteo$Temperature,substr(dataMeteo$DATE,1,7), mean)
+
+#Comparaison pour verification
+tv<-data.frame(tempMoisE,tempMois)#Test pour verifier les resultats sont les mêmes
+
+#Calcul avec tapply
+PreMois<-tapply(dataMeteo$Precipitation,format(dataMeteo$DATE,"%Y-%m"), sum)
+EtpMois<-tapply(dataMeteo$ETP,format(dataMeteo$DATE,"%Y-%m"), mean)
+EchMois<-data.frame(table(format(dataMeteo$DATE,"%Y-%m")))# grace la fonction table , je recupère les frequences dans un tableau 
+str(EchMois)
+
+#as.POSIXct(strptime(TempPINATA$V1, "%Y-%m-%d %H:%M:%S")) permet de convertir les chaines de caratères en format dates
+#Recuperation dans un tableau et nomination des colonnes
+Mois<-data.frame(EchMois$Var1, tempMois,PreMois,EtpMois)
+names(Mois)<-c("Date","TempMensuelle","PrecMensuelle", "EtpMensuelle")
+str(Mois)
+```
+#----------------------------------------------------------------------------------
+#    EXTRATION DES DONNEES(Temperature, Precipitation, ETP) PAR ANNEE
+#-----------------------------------------------------------------------------------
+```{r echo=FALSE}
+#Calcul des moyennes annuelles
+tempAn<-tapply(dataMeteo$Temperature,format(dataMeteo$DATE,"%Y"), mean)
+PreAn<-tapply(dataMeteo$Precipitation,format(dataMeteo$DATE,"%Y"), sum)
+EtpAn<-tapply(dataMeteo$ETP,format(dataMeteo$DATE,"%Y"), mean)
+Annee<-data.frame(table(format(dataMeteo$DATE,"%Y")))
+
+Annee$Var1<-as.Date(strptime(Annee$Var1, "%Y"))
+Annee$Var1<-year(Annee$Var1)
+
+#Recuperation dans un tableau et nomination des colonnes
+Annuel<-data.frame(Annee$Var1,tempAn,PreAn,EtpAn)
+names(Annuel)<-c("Date","TempAnnuelle","PrecAnnuelle", "EtpAnnuelle")
+
+str(Annuel)
+```
+#----------------------------------------------------------------------------------
+#    TEMPERATURE (Journalière,Mois et Annuel)
+#----------------------------------------------------------------------------------
+```{r echo=FALSE}
+par(mfcol=c(1,3))
+
+barplot(dataMeteo$Temperature,ylab="Temperature(°C)",main = "Temperature journalière (1959-2018)",ylim = c(-20,40),names.arg = dataMeteo$DATE)
+legend("topright",legend = paste(c("Min","1Quartile","Mediane","Moyenne","3Quartile","Max"), summary(dataMeteo$Temperature,digits = 3)), pch="+", col=1:6, text.col=1:6,cex = 0.6)
+summary(dataMeteo$Temperature,digits = 3)
+
+barplot(Mois$TempMensuelle,ylab="Temperature(°C)",main = "Temperature Mensuelle (1959-2018)",ylim = c(-3,22),names.arg = Mois$Date)
+legend("topright",legend = paste(c("Min","1Quartile","Mediane","Moyenne","3Quartile","Max"), summary(Mois$TempMensuelle,digits = 3)),pch="+", col=1:6, text.col=1:6, cex = 0.6)
+summary(Mois$TempMensuelle,digits = 3)
+
+barplot(Annuel$TempAnnuelle,ylab="Temperature(°C)",main = "Temperature Annuelle (1959-2018)",ylim = c(0,12),names.arg = Annuel$Date)
+legend("topright",legend = paste(c("Min","1Quartile","Mediane","Moyenne","3Quartile","Max"), summary(Annuel$TempAnnuelle,digits = 3)),pch="+", col=1:6, text.col=1:6, cex = 0.6)
+summary(Annuel$TempAnnuelle,digits = 3)
+
+par(mfcol=c(1,1))
+```
+#----------------------------------------------------------------------------------
+#    PRECIPITATION (Journalière, Mois et Annuel)
+#----------------------------------------------------------------------------------
+```{r echo=FALSE}
+par(mfrow=c(1,3))
+
+barplot(dataMeteo$Precipitation,ylab = "Hauteur de pluie(mm)",main = "Precipitation journalière(1959-2018)",ylim = c(0,200),names.arg=dataMeteo$DATE)
+legend("topright",legend = paste(c("Min","1Quartile","Mediane","Moyenne","3Quartile","Max"), summary(dataMeteo$Precipitation,digits = 3)),pch="+", col=1:6, text.col=1:6, cex = 0.6)
+
+barplot(Mois$PrecMensuelle,ylab = "Hauteur de pluie(mm)",main = "Precipitation Mensuelle(1959-2018)",ylim = c(0,500),names.arg=Mois$Date)
+legend("topright",legend = paste(c("Min","1Quartile","Mediane","Moyenne","3Quartile","Max"), summary(Mois$PrecMensuelle,digits = 3)), pch="+", col=1:6, text.col=1:6,cex = 0.6)
+
+barplot(Annuel$PrecAnnuelle,ylab = "Hauteur de pluie(mm)",main = "Precipitation Annuelle(1959-2018)",ylim = c(0,1800),names.arg=Annuel$Date)
+legend("topright",legend = paste(c("Min","1Quartile","Mediane","Moyenne","3Quartile","Max"), summary(Annuel$PrecAnnuelle,digits = 3)),pch="+", col=1:6, text.col=1:6,cex = 0.6)
+
+par(mfcol=c(1,1))
+```
+#-----------------------------------------------------------------------------------
+#      EVAPORATION (Journalière , Mois et Annuel)
+#---------------------------------------------------------------------------------
+```{r echo=FALSE}
+par(mfrow=c(1,3))
+
+barplot(dataMeteo$ETP,ylab = "Evaporation",main = "Evaporation journalière(1959-2018)",ylim = c(-2,10), names.arg = dataMeteo$DATE)
+legend("topright",legend = paste(c("Min","1Quartile","Mediane","Moyenne","3Quartile","Max"), summary(dataMeteo$ETP,digits = 3)),pch="+", col=1:6, text.col=1:6, cex = 0.6)
+
+barplot(Mois$EtpMensuelle,ylab = "Evaporation",main = "Evaporation Mensuelle (1959-2018)",ylim = c(0,5),names.arg = Mois$Date)
+legend("topright",legend = paste(c("Min","1Quartile","Mediane","Moyenne","3Quartile","Max"), summary(Mois$EtpMensuelle,digits = 3)),pch="+", col=1:6, text.col=1:6, cex = 0.6)
+
+barplot(Annuel$EtpAnnuelle,ylab = "Evaporation",main = "Evaporation Annuelle (1959-2018)",ylim = c(0,3),names.arg = Annuel$Date)
+legend("topright",legend = paste(c("Min","1Quartile","Mediane","Moyenne","3Quartile","Max"), summary(Annuel$EtpAnnuelle,digits = 3)), pch="+", col=1:6, text.col=1:6,cex = 0.6)
+
+par(mfcol=c(1,1))
+```
+#----------------------------------------------------------------------------------
+#      Diagramme ombrothermique (Pluie et Temperature avec P=2T)
+#-------------------------------------------------------------------------------
+```{r echo=FALSE}
+par(mfrow=c(1,1))
+#Calcul des moyennes annuelles
+TempM<-tapply(dataMeteo$Temperature,month(dataMeteo$DATE), mean)
+ETpM<-tapply(dataMeteo$ETP,month(dataMeteo$DATE), mean)
+
+#calcul la moyenne des hauteurs de pluies annuelles par Mois
+MoyMois<-function(x){sum(x)/(2018-1959)}
+PrecuM<-tapply(dataMeteo$Precipitation,month(dataMeteo$DATE), MoyMois)
+
+#Recuperation dans un tableau et nomination des colonnes
+DiaOmb<-data.frame(month.name,TempM,PrecuM,ETpM)
+names(DiaOmb)<-c("Date","TempDiaOmb","PrecDiaOmb", "EtpDiaOmb")
+str(DiaOmb)
+resu=table(kable(summary(DiaOmb)))
+resu=data.frame(resu)
+sum(DiaOmb$PrecDiaOmb)
+
+
+#Code mieux arranger et tres simple
+plot.new()
+par(mar=c(4,4,3,4))# les  marges larges pour l'ajout ultérieur des titres des axes
+#Diagramme des précipitations avec configuration de l'axe et de sa couleur
+barplot(DiaOmb$PrecDiaOmb,main="Diagramme Ombrothermique (1959-2018)",xlab = "", ylab = "", ylim=c(0,130),names.arg = substr(month.name, 1,1), las =1, col = "Darkblue")
+axis(2,col="blue",las = 2, col.axis="Darkblue")
+mtext("Précipitation (mm)",col = "Darkblue",side=2,line=2,cex=1.1)
+
+par(new=T,mar=c(4,4,3,4)) #Une nouvelle colonne avec les memes marges de depart pour les titres
+#graphique de la temperature avec configuration de l'axe et de sa couleur
+plot(DiaOmb$TempDiaOmb,yaxs = "i", axes=F,yaxt = "n", xaxt = "n",type="o",lwd=2,pch=16,col="red",xlab = "", 
+     ylab ="",ylim=c(0,65))
+axis(4,col="red",las = 2,col.axis="red")
+mtext("Température (°C)",side=4,col="red",line=2,cex=1.1)
+
+#axis(1,las = 1,col.axis="black")
+mtext("Mois",side=1,col="black",line=2.5,cex=1.1)
+legend("top",legend = paste(c("Temperature","Précipitation")),pch="+", col=c("red","Darkblue"), text.col=c("red","Darkblue"),cex = 1)
+
+par(mfcol=c(1,1))
+```
+#-------------------------------------------------------------------------------
+#       Diagramme ombrothermique de pluie et Évaporation
+#--------------------------------------------------------------------------------
+```{r echo=FALSE}
+par(mfrow=c(1,1))
+par(mar=c(4,4,3,4))# les  marges larges pour l'ajout ultérieur des titres des axes
+#Diagramme des précipitations avec configuration de l'axe et de sa couleur
+barplot(DiaOmb$PrecDiaOmb,main="Diagramme Ombrothermique (1959-2018)",xlab = "", ylab = "", ylim=c(0,130),names.arg = substr(month.name, 1,1), las =1, col = "Darkblue")
+axis(2,col="blue",las = 2, col.axis="Darkblue")
+mtext("Précipitation (mm)",col = "Darkblue",side=2,line=2,cex=1.1)
+
+par(new=T,mar=c(4,4,3,4)) #Une nouvelle colonne avec les memes marges de depart pour les titres
+#graphique de l'evaporation avec configuration de l'axe et de sa couleur
+plot(DiaOmb$EtpDiaOmb,yaxs = "i", axes=F,yaxt = "n", xaxt = "n",type="o",lwd=2,pch=16,col="darkgoldenrod",xlab = "", ylab ="",ylim=c(0,65))
+axis(4,col="darkgoldenrod",las = 2,col.axis="darkgoldenrod")
+mtext("EVAPORATION (mm)",side=4,col="darkgoldenrod",line=2,cex=1.1)
+
+#axis(1,las = 1,col.axis="black")
+mtext("Mois",side=1,col="black",line=2.5,cex=1.1)
+legend("top",legend = paste(c("Evaporation","Précipitations")),pch="+", col=c("darkgoldenrod","Darkblue"), text.col=c("darkgoldenrod","Darkblue"),cex = 0.6)
+
+par(mfcol=c(1,1))
+```
+#---------------------------------------------------------------------------------
+#       Comparaison des données locales avec celle du modèle SAFRAN
+#----------------------------------------------------------------------------------
+# *****Sonde Baro Temperature locale PINATA
+
+```{r echo=TRUE}
+par(mfcol=c(1,1))
+#IMPORTATION DES DONNEES 
+setClass('myDate1')
+setAs("character","myDate1", function(from) as.POSIXct(strptime(from, "%Y-%m-%d %H:%M:%S")))
+
+TempPINATA=read.csv("F:/PROJET-S3/Donnees/2- Sonde barométrique et temperature locales/Données sources/Mai_2019/1 - Fichier ZIP/VuSitu_2018-10-18_08-00-00_Arbre_Entrer_Baro pinata.csv",sep=",",skip=26,dec=".",header=F)
+
+#CONFIGURATION DES DONNEES PAR LEUR CLASSE POUR UNE BONNE GESTION
+Date=as.POSIXct(strptime(TempPINATA$V1, "%Y-%m-%d %H:%M:%S"))
+Pression=as.numeric(TempPINATA$V2)
+Temperature=as.numeric(TempPINATA$V3)
+
+#NOMINATION DES COLONNES ET VERIFICATION DES DONNÉES
+TempPINATA=data.frame(Date,Pression,Temperature)
+str(TempPINATA)
+head(TempPINATA)
+tail(TempPINATA)
+summary(TempPINATA)
+
+##Calcul des moyennes par jours
+
+#codes d'extration des donnees de 2018 de la base
+format(TempPINATA$Date, "%Y")<2019 # marche seulement dans le cas des DATES
+grep("^2018-[10-12]", TempPINATA$Date); grep("^2018", TempPINATA$Date) # les expressions de regex marchent très bien
+ 
+#Méthode d'extration des données
+TempPINATA2018=TempPINATA[grep("^2018", TempPINATA$Date),] #marche pour tout type de donnée
+TempPINATA2018=TempPINATA[format(TempPINATA$Date, "%Y")<2019,] # marche seulement pour les format DATES
+
+#verification des donnees 
+str(TempPINATA2018)
+summary(TempPINATA2018)
+
+#temptest=tapply(TempPINATA$Temperature, substr(TempPINATA$Date,9,10), mean)
+TempDay=tapply(TempPINATA2018$Temperature,format(TempPINATA2018$Date, "%Y-%m-%d"), mean)
+pressDay=tapply(TempPINATA2018$Pression,format(TempPINATA2018$Date, "%Y-%m-%d"), mean)
+freqDM<-data.frame(table(format(TempPINATA2018$Date, "%Y-%m-%d")))
+MyDat=data.frame(freqDM$Var1,TempDay,pressDay)
+names(MyDat)<-c("Jour","Temperature journlière","Pression journalière")
+
+#Calcul des moyennes par mois
+TempMont=tapply(TempPINATA2018$Temperature,format(TempPINATA2018$Date, "%Y-%m"), mean)
+pressMont=tapply(TempPINATA2018$Pression,format(TempPINATA2018$Date, "%Y-%m"), mean)
+freqMont=data.frame(table(format(TempPINATA2018$Date, "%Y-%m")))
+
+#calcul des moyennes par an (pas de données)
+TempYear=tapply(TempPINATA2018$Temperature,year(TempPINATA2018$Date), mean)
+pressYear=tapply(TempPINATA2018$Pression,year(TempPINATA2018$Date), mean)
+freqYear=data.frame(table(format(TempPINATA2018$Date, "%Y")))
+
+par(mfcol=c(1,1))
+```
+#___Extration données SAFRAN 2018 Pour Comparaison________
+```{r echo=FALSE}
+#donnee de SAFRAN en 2018
+#year(dataMeteo$DATE)==2018
+grep("^2018-10-18",dataMeteo$DATE)
+Safran2018=dataMeteo[grep("^2018-10-18",dataMeteo$DATE):length(dataMeteo$DATE),]
+summary(Safran2018)
+TempM2018=tapply(Safran2018$Temperature, format(Safran2018$DATE,"%Y-%m"),mean)
+Temp2018=tapply(Safran2018$Temperature, year(Safran2018$DATE),mean)
+```
+#______RMSE & COMPARAISON________________________________
+```{r echo=FALSE}
+par(mfrow=c(1,1))
+#les coefficients de RMSE
+rmseJ=rmse(TempDay,Safran2018$Temperature)
+rmseM=rmse(TempMont,TempM2018)
+rmseA=rmse(TempYear,Temp2018)
+
+#les coefficients de Pearson
+corJ=cor(TempDay,Safran2018$Temperature)
+corM=cor(TempMont,TempM2018)
+corA=cor(TempYear,Temp2018)
+
+#rmseJ=gof(TempDay,Safran2018$Temperature)
+#rmseM=gof(TempMont,TempM2018)
+#rmseA=gof(TempYear,Temp2018)
+
+##Comparaison par graphes
+#Tableau
+compJ=data.frame(MyDat$Jour,Safran2018$Temperature,TempDay)
+#compM=data.frame(freqMont$Var1,TempM2018,TempMont)
+#compA=data.frame(freqYear$Var1,Temp2018,TempYear)
+
+str(compJ)
+compJ$MyDat.Jour<-as.POSIXct(strptime(compJ$MyDat.Jour,"%Y-%m-%d"))
+str(compJ)
+
+x11()
+##Comparaison Journalière
+plot(compJ$MyDat.Jour,compJ$Safran2018.Temperature, type="l",pch=16, col = "blue",xlab="Jour",ylab="Tempéracture(°C)", main="Comparaison Journalière (2018-10 à 2018-12)",ylim = c(min(compJ$TempDay),max(compJ$Safran2018.Temperature)))
+lines(compJ$MyDat.Jour,compJ$TempDay,col = "red", type = "l",pch=14)
+legend("topright",legend = paste(c("RMSE","Pearson"),round(c(rmseJ,corJ), 3)), pch="+", col=1:2, text.col=1:2,cex = 1.2)
+legend("bottom",legend = c("PINATA", "SAFRAN"),pch = c(16,14),col= c("red","blue"),cex = 1)
+
+par(mfcol=c(1,1))
+
+##Comparaison Journalière avec ggpplot
+graph<-ggplot(compJ, aes(MyDat.Jour)) +
+  geom_linematp(aes(y=compJ$Safran2018.Temperature, colour="TemperatureSafran2018")) +
+  geom_line(aes(y=compJ$TempDay, colour="Temperature")) +
+  labs(colour="Type", 
+       x="Jour",
+       y="Tendance") +
+  scale_colour_manual(values=c("blue", "red")) +
+  theme(legend.position=c(0.9, 0.9))+
+  theme_bw()+
+  labs(title ="Comparaison entre Temperature locale et Modele de SAFRAN")
+#Pour ajouter une annotation au graphe draw_label
+#label <- expression(paste("Coefficients (", "RMSE", " = ", round(rmseJ, digits=4), ", ", "Pearson", " = ", round(corJ, digits=4), ")"))
+#label <- expression(paste("Densité N(", mu, " = ", 3.1856, ", ", sigma^2, " = ", 0.9435, ")"))
+#graph + draw_label(label, x = 10, y = 0.40, hjust = 0, vjust = 0, colour = "blue") 
+
+
+
+## Comparaison Journalière (regression lineaire) par Mapping
+ggplot(compJ)+
+  geom_smooth(mapping =aes(MyDat.Jour,compJ$Safran2018.Temperature))+
+  geom_smooth(mapping =aes(MyDat.Jour,compJ$TempDay))
+
+par(mfcol=c(1,1))
+
+```
+#------------------------------------------------------------------------------------
+#        DECOMPOSITION SERIE TEMPORELLE : TEMPERATURE
+#------------------------------------------------------------------------------------
+```{r echo=FALSE}
+par(mfcol=c(1,1))
+# # # SERIES TEMPORELLES ET CHRONOLOGIQUES 
+Mois
+str(Mois)
+Mois<-Mois[order(Mois$Date),] #classement PAR DATE
+attach(Mois)
+
+### Etude classique  sur la Temperature---------------------------------------------------------------------
+
+#Presentation des données
+plot(TempMensuelle,main = "Donnée de la temperature initiale", ylim = c(0,max(TempMensuelle)))
+
+#Transformations les données en Timseries
+tempMois.ts=ts(TempMensuelle,start = c(1959,1), frequency = 12)
+plot(tempMois.ts,main = "Donnée de la temperature Timserie", ylim = c(0,max(tempMois.ts)))
+
+#DECOMPOSITION par la commande decompose avec type multipicative
+#tempMois.ts.dcp=decompose(tempMois.ts,type="mult")
+#plot(tempMois.ts.dcp,main="Decomposition en série ")
+
+#plot(tempMois.ts,main = "Donnée de la temperature Timserie", ylim = c(0,max(tempMois.ts)))
+#lines(tempMois.ts.dcp$trend, col ="red")
+
+
+##Normalité et indépendance des résidus issus de la decomposition
+#par(mfrow=c(2,1))
+#residus.dcp=tempMois.ts.dcp$random
+#hist(residus, probability = TRUE,main="residus de la décomposition classique" ,xlab = "")
+#curve(dnorm(x,mean(residus.dcp),sd(residus.dcp)), add = T, col="red")
+#QQplot
+#qqnorm(residus.dcp, datax=TRUE, main="residus de la décomposition classique")
+#qqline(residus.dcp,datax=TRUE)
+
+
+#DECOMPOSITION decomp=stl(database,s.window="periodic")-----------------------------------
+tempMois.ts.stl=stl(tempMois.ts,s.window="periodic")
+plot(tempMois.ts.stl)
+
+plot(tempMois.ts,main = "Donnée de la temperature Timserie", ylim = c(0,max(tempMois.ts)))
+lines(tempMois.ts.stl$time.series[,2], col ="red")
+
+
+#Normalité et indépendance des résidus issus de la decomposition
+par(mfrow=c(1,2))
+residus=tempMois.ts.stl$time.series[,3]
+hist(residus, probability = TRUE,main="residus de la décomposition classique" ,xlab = "")
+curve(dnorm(x,mean(residus),sd(residus)), add = T, col="red")
+#QQplot
+qqnorm(residus, datax=TRUE, main="residus de la décomposition classique")
+qqline(residus,datax=TRUE)
+ks.test(residus, "pnorm",mean(residus),sd(residus))
+
+par(mfcol=c(1,1))
+# Etude par lissage exponentiel :HoltWinters 
+temp.Hw=HoltWinters(tempMois.ts)
+plot(temp.Hw$fitted)
+#prediction 
+
+predict(temp.Hw,n.ahead = 60)
+plot.ts(tempMois.ts,main = "Donnée de la temperature Timserie")
+lines(predict(temp.Hw,n.ahead = 60), col ="red")
+plot(predict(temp.Hw,n.ahead = 60),type="b")
+
+predict(temp.Hw,n.ahead = 60)
+
+# Analyse à posteriori de la prévision
+TempPredi2019<-predict(temp.Hw,n.ahead =12 )
+TempPredi2019[10:12,]
+#Temperature SAFRAN de 2018(10 à 12 : 3mois)
+TempSafran3Mois<-tapply(compJ$Safran2018.Temperature,format(compJ$MyDat.Jour,"%Y-%m") , mean)
+#Temperature local PINATA
+Templocal<-tapply(compJ$TempDay,format(compJ$MyDat.Jour,"%Y-%m") , mean)
+
+rmseVer=rmse(Templocal,TempPredi2019[10:12,])
+rmseVer2=rmse(TempSafran3Mois,TempPredi2019[10:12,])
+
+par(mfcol=c(1,1))
+
+```
+#-----------------------------------------------------------------------------------
+#     DECOMPOSITION SERIES TEMPORELLES : Precipitation SAFRAN
+#------------------------------------------------------------------------------------
+```{r echo=FALSE}
+par(mfcol=c(1,1))
+attach(Mois)
+#Presentation des données
+plot(PrecMensuelle,main = "Donnée de la précitation originae", ylim = c(0,max(PrecMensuelle)))
+
+#Transformations les données en Timseries
+preMois.ts=ts(PrecMensuelle,start = c(1959,1), frequency = 12)
+
+#DECOMPOSITION par la commande de decompose 
+preMois.ts.dcp=decompose(preMois.ts,type="mult")
+plot(preMois.ts.dcp)
+
+residusPre=preMois.ts.dcp$x
+par(mfrow=c(2,1))
+#Normalité et indépendance des résidus issus de la decomposition
+#residus=tempMois.ts.dcp$figure
+hist(residusPre, probability = TRUE,main="residus de la décomposition classique" ,xlab = "")
+curve(dnorm(x,mean(residusPre),sd(residus)), add = T, col="red")
+#QQplot
+qqnorm(residusPre, datax=TRUE, main="residus de la décomposition classique")
+qqline(residusPre,datax=TRUE)
+
+par(mfcol=c(1,1))
+#DECOMPOSITION decomp=stl(database,s.window="periodic")
+PrecMois.ts.stl=stl(tempMois.ts,s.window="periodic")
+plot(tempMois.ts.stl)
+
+plot(preMois.ts,main = "Donnée de la Précipitation en Timserie", ylim = c(0,max(preMois.ts)))
+lines(PrecMois.ts.stl$time.series[,2], col ="red")
+
+par(mfrow=c(2,1))
+#Normalité et indépendance des résidus issus de la decomposition
+residusPre.slt=PrecMois.ts.stl$time.series[,3]
+hist(residusPre.slt, probability = TRUE,main="residus de la décomposition classique" ,xlab = "")
+curve(dnorm(x,mean(residusPre.slt),sd(residusPre.slt)), add = T, col="red")
+#QQplot
+qqnorm(residusPre.slt, datax=TRUE, main="residus de la décomposition classique")
+qqline(residusPre.slt,datax=TRUE)
+
+par(mfcol=c(1,1))
+# Etude par lissage exponentiel :HoltWinters 
+prec.Hw=HoltWinters(preMois.ts)
+plot(prec.Hw$fitted)
+#prediction 
+predict(prec.Hw,n.ahead = 12)
+plot(preMois.ts,main = "Donnée de la précipitation Timserie", ylim = c(0,max(tempMois.ts)))
+lines(predict(prec.Hw,n.ahead = 12), col ="red")
+par(mfcol=c(1,1))
+```
+#------------------------------------------------------------------------------------
+#      DECOMPOSITION SERIES TEMPORELLES : EVAPORATION SAFRAN
+#-------------------------------------------------------------------------------------
+```{r echo=FALSE}
+par(mfcol=c(1,1))
+attach(Mois)
+#Presentation des données
+plot(EtpMensuelle,main = "Donnée d'évaporation originale",ylim = c(0,max(EtpMensuelle)))
+
+#Transformations les données en Timseries
+etpMois.ts=ts(EtpMensuelle,start = c(1959,1), frequency = 12)
+
+
+plot(etpMois.ts,main = "Donnée d'évaporation en timserie", ylim = c(0,max(etpMois.ts)))
+etpMois.ts.dcp=decompose(etpMois.ts,type="mult")
+plot(etpMois.ts.dcp)
+
+residusEtp.dec=etpMois.ts.dcp$x
+par(mfrow=c(2,1))
+#Normalité et indépendance des résidus issus de la decomposition
+#residus=tempMois.ts.dcp$figure
+hist(residusEtp.dec, probability = TRUE,main="residus de la décomposition classique" ,xlab = "")
+curve(dnorm(x,mean(residusEtp.dec),sd(residusEtp.dec)), add = T, col="red")
+#QQplot
+qqnorm(residusEtp.dec, datax=TRUE, main="residus de la décomposition classique")
+qqline(residusEtp.dec,datax=TRUE)
+
+par(mfcol=c(1,1))
+#DECOMPOSITION decomp=stl(database,s.window="periodic")
+etpMois.ts.stl=stl(etpMois.ts,s.window="periodic")
+plot(etpMois.ts.stl)
+
+plot(etpMois.ts,main = "Donnée d'évaporation en Timserie", ylim = c(0,max(etpMois.ts)))
+lines(etpMois.ts.stl$time.series[,2], col ="red")
+
+par(mfrow=c(2,1))
+#Normalité et indépendance des résidus issus de la decomposition
+residusEtp.slt=etpMois.ts.stl$time.series[,3]
+hist(residusEtp.slt, probability = TRUE,main="residus de la décomposition classique" ,xlab = "")
+curve(dnorm(x,mean(residusEtp.slt),sd(residusEtp.slt)), add = T, col="red")
+#QQplot
+qqnorm(residusEtp.slt, datax=TRUE, main="residus de la décomposition classique")
+qqline(residusEtp.slt,datax=TRUE)
+
+par(mfcol=c(1,1))
+# Etude par lissage exponentiel :HoltWinters 
+etp.Hw=HoltWinters(etpMois.ts)
+plot(etp.Hw$fitted)
+#prediction 
+predict(etp.Hw,n.ahead = 12)
+plot(etpMois.ts,main = "Donnée d'évaporation Timserie", ylim = c(0,max(etpMois.ts)))
+lines(predict(etp.Hw,n.ahead = 12), col ="red")
+
+par(mfcol=c(1,1))
+```
+#-------------------------------------------------------------------------------------
+#      Test de normalité
+#------------------------------------------------------------------------------------
+```{r echo=FALSE}
+# # # courbe de normalité
+par(mfrow=c(2,3))
+
+##QQ-plot
+#temperature
+qqnorm(dataMeteo$Temperature, datax=TRUE, main="Temperature")
+qqline(dataMeteo$Temperature,datax=TRUE)
+#evaporation
+qqnorm(dataMeteo$ETP, datax=TRUE, main="Evaporation")
+qqline(dataMeteo$ETP,datax=TRUE)
+#previpitation
+qqnorm(dataMeteo$Precipitation, datax=TRUE, main="Precipitation")
+qqline(dataMeteo$Precipitation,datax=TRUE)
+
+##Histogramme de normalité
+#temperature journaliere
+hist(dataMeteo$Temperature, probability = TRUE,xlab = "", main = "")
+curve(dnorm(x,mean(dataMeteo$Temperature),sd(dataMeteo$Temperature)), add = T, col="red")
+#qnorm(dataMeteo$Temperature,mean(dataMeteo$Temperature),sd(dataMeteo$Temperature))
+
+#Evaporation journalière
+hist(dataMeteo$ETP, probability = TRUE,main="", xlab = "")
+curve(dnorm(x,mean(dataMeteo$ETP),sd(dataMeteo$ETP)), add = T, col="red", xlab = "")
+#qnorm(dataMeteo$ETP,mean(dataMeteo$ETP),sd(dataMeteo$ETP))
+#precipitation journalière
+hist(dataMeteo$Precipitation, probability = TRUE,main="" ,xlab = "")
+curve(dnorm(x,mean(dataMeteo$Precipitation),sd(dataMeteo$Precipitation)), add = T, col="red")
+#qnorm(dataMeteo$Precipitation,mean(dataMeteo$Precipitation),sd(dataMeteo$Precipitation))
+
+
+pnorm(dataMeteo$ETP,0,1)
+qnorm(dataMeteo$ETP,0,1)
+
+
+##Test de kolmogorof
+#precipitation
+t<-ks.test(dataMeteo$Precipitation, "pnorm",mean(dataMeteo$Precipitation),sd(dataMeteo$Precipitation))
+#temperature
+ks.test(dataMeteo$Temperature, "pnorm",mean(dataMeteo$Temperature),sd(dataMeteo$Temperature))
+#Evaporation
+ks.test(dataMeteo$ETP, "pnorm",mean(dataMeteo$ETP),sd(dataMeteo$ETP))
+
+par(mfcol=c(1,1))
+
+```
+#------------------------------------------------------------------------------------
+#     SPI PRECIPITATION (oPTIONNEL)
+#--------------------------------------------------------------------------------------
+```{r echo=FALSE}
+par(mfcol=c(1,1))
+
+str(dataMeteo)
+dataMeteo<-dataMeteo[order(dataMeteo$DATE),] #classement PAR DATE
+str(dataMeteo)
+
+#condition d'extration Tmin et Tmax
+Tmin=tapply(dataMeteo$Temperature, format(dataMeteo$DATE,"%Y-%m"), min)
+Tmax=tapply(dataMeteo$Temperature, format(dataMeteo$DATE,"%Y-%m"), max)
+#Mois<-format(dataMeteo$DATE,"%m")
+#Year=format(dataMeteo$DATE,"%Y")
+
+Tab.SPI=data.frame(Annuel$Date,substr(Mois$Date,6,7),Tmin,Tmax,Mois$PrecMensuelle)
+names(Tab.SPI)=c("YEAR","MONTH","TMIN","TMAX","PRCP")
+write.table(Tab.SPI,"F:/PROJET-S3/Dossier de traitement/traitement Meteo/Spei/SPI.txt", dec = ".", sep = ";")
+str(Tab.SPI)
+summary(Tab.SPI)
+
+#Estimation de SPEI et SPI
+
+# coordonnée de Puyvador 
+lat=42.65
+long=2.1167
+
+
+#-----------------------Calcul de SPEI----------------------------------------------------
+TMIN=Tab.SPI$TMIN
+TMAX=Tab.SPI$TMAX
+# Hargreaves
+Tab.SPI$PET<-hargreaves(TMIN,TMAX,lat=42.65)
+CWBAL<-Tab.SPI$PRCP-Tab.SPI$PET
+#Periode de 3
+spei3=spei(CWBAL,3) 
+plot.spei(spei3)
+#Periode de 6 
+spei6=spei(CWBAL,6) # 6 MOIS
+plot.spei(spei6)
+  #Periode de 12
+spei12=spei(CWBAL,12) 
+plot.spei(spei12,main ="12-Month SPEI")
+
+
+#---------------------------Calcul de SPI---------------------------------------------------
+spi3=spi(Tab.SPI$PRCP,3)
+spi6=spi(Tab.SPI$PRCP,6)
+spi9=spi(Tab.SPI$PRCP,9)
+spi12=spi(Tab.SPI$PRCP,12)
+spi24=spi(Tab.SPI$PRCP,24)
+
+plot.spei(spi3,main ="3-Month SPI")
+plot.spei(spi6,main ="6-Month SPI")
+plot.spei(spi9,main ="9-Month SPI")
+plot.spei(spi12,main ="12-Month SPI")
+plot.spei(spi24,main ="24-Month SPI")
+
+#Normalité et indépendance de spi3 / rarete de secheresse
+par(mfrow=c(1,2))
+hist(spi3$fitted, probability = TRUE,main="" ,xlab = "")
+curve(dnorm(x,mean(spi3$fitted),sd(spi3$fitted)), add = T, col="red")
+#QQplot
+qqnorm(spi3$fitted, datax=TRUE, main="")
+qqline(spi3$fitted,datax=TRUE)
+ks.test(spi3$fitted, "pnorm",mean(spi3$fitted),sd(spi3$fitted))
+
+hist(spi3$fitted)
+plot(spi3$coefficients)
+
+plot(spi6$fitted)
+plot(spi6$coefficients)
+
+par(mfcol=c(1,1))
+```
+#--------------------------------------------------------------------------------------
+#     Comparaison des données locales avec celle du modèle SAFRAN
+#--------------------------------------------------------------------------------------
+#_____IMPORTATION DES PLUIES LOCALES
+```{r echo=FALSE}
+ par(mfcol=c(1,1))
+
+setClass('myDate1')
+setAs("character","myDate1", function(from) as.POSIXct(strptime(from, "%d/%m/%Y")))
+PluLocal<-read.csv("F:/PROJET-S3/Donnees/4 - Pluviomètre local/RainfallLocalMeteorologicalStation.csv",dec = ".",sep = ";",header = F,skip=1, colClasses = c("myDate1","numeric"), col.names = c("DATE", "Precipitation"))
+
+str(PluLocal)
+
+#Comparaiosn des pluies
+PluLocal=PluLocal[grep("^2018", PluLocal$DATE),]
+dataMePluies=dataMeteo[grep("^2018-12", dataMeteo$DATE),][,c(1,3)]
+
+str(PluLocal)
+str(dataMePluies)
+
+#les coefficients de RMSE
+rmseP=rmse(PluLocal$Precipitation,dataMePluies$Precipitation)
+
+
+#les coefficients de Pearson
+corP=cor(PluLocal$Precipitation,dataMePluies$Precipitation)
+
+
+##Comparaison par graphes
+#Tableau
+#Tableau
+compP=data.frame(PluLocal$DATE,dataMePluies$Precipitation,PluLocal$Precipitation)
+
+write.table(compP, file = "F:/PROJET-S3/Dossier de traitement/traitement Meteo/ComparaisonPluies.txt",sep = ";",dec = ".", row.names = TRUE)
+
+str(compP)
+
+
+compP$PluLocal.DATE<-as.POSIXct(strptime(compP$PluLocal.DATE,"%Y-%m-%d"))
+str(compP)
+
+x11()
+##Comparaison Journalière
+plot(PluLocal$DATE,dataMePluies$Precipitation, type="l",pch=16, col = "blue",xlab="Jour",ylab="Précipitation(mm)", main="Comparaison Journalière (2018-12-01 à 2018-12-31)",ylim = c(min(dataMePluies$Precipitation),max(PluLocal$Precipitation)))
+lines(PluLocal$DATE,PluLocal$Precipitation,col = "red", type = "l",pch=14)
+legend("topright",legend = paste(c("RMSE","Pearson"),round(c(rmseP,corP), 3)), pch="+", col=1:2, text.col=1:2,cex = 1.2)
+legend("right",legend = c("Pluies locales", "SAFRAN"),pch = c(16,14),col= c("red","blue"),cex = 1)
+
+par(mfcol=c(1,1))
+
+##Comparaison Journalière avec ggpplot
+graph<-ggplot(compP, aes(PluLocal$DATE)) +
+  geom_line(aes(y=dataMePluies$Precipitation, colour="PrecipitationSafran2018")) +
+  geom_line(aes(y=PluLocal$Precipitation, colour="PrecipitationLocales")) +
+  labs(colour="Type", 
+       x="Jour",
+       y="Tendance") +
+  scale_colour_manual(values=c("blue", "red")) +
+  theme(legend.position=c(0.9, 0.9))+
+  theme_bw()+
+  labs(title ="Comparaison entre précipitationlocale et Modele de SAFRAN")
+#Pour ajouter une annotation au graphe draw_label
+#label <- expression(paste("Coefficients (", "RMSE", " = ", round(rmseJ, digits=4), ", ", "Pearson", " = ", round(corJ, digits=4), ")"))
+#label <- expression(paste("Densité N(", mu, " = ", 3.1856, ", ", sigma^2, " = ", 0.9435, ")"))
+#graph + draw_label(label, x = 10, y = 0.40, hjust = 0, vjust = 0, colour = "blue") 
+
+## Comparaison Journalière (regression lineaire) par Mapping
+ggplot(compP)+
+  geom_smooth(mapping =aes(compP$PluLocal.DATE,compP$dataMePluies.Precipitation))+
+  geom_smooth(mapping =aes(compP$PluLocal.DATE,compP$PluLocal.Precipitation))
+
+par(mfcol=c(1,1))
+
+
+
+
+```
